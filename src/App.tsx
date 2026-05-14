@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from './hooks/useAuth';
 import { db } from './lib/firebase';
-import { collection, query, where, onSnapshot, orderBy, addDoc, serverTimestamp, deleteDoc, doc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, addDoc, serverTimestamp, deleteDoc, doc, updateDoc, getDoc, getDocs } from 'firebase/firestore';
 import { Routine, Day, Exercise, ExerciseMedia } from './types';
 import { 
   Plus, 
@@ -19,7 +19,10 @@ import {
   Search,
   CheckCircle2,
   Menu,
-  LayoutDashboard
+  LayoutDashboard,
+  Share2,
+  Copy,
+  ExternalLink
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User } from 'firebase/auth';
@@ -75,6 +78,24 @@ function getExerciseImage(name: string, customMedia: Record<string, string> = {}
   return GYM_IMAGES[hash % GYM_IMAGES.length];
 }
 
+const EXERCISE_GROUPS = {
+  'PECHO': [
+    'BANCO PLANO', 'BANCO INCLINADO', 'PECHO CABLE', 'PRESS SENTADO', 'PECHO MARIPOSA'
+  ],
+  'ESPALDA': [
+    'DOMINADAS', 'LAT MACHINE', 'POLEA', 'JALON PECHO', 'REMO'
+  ],
+  'BICEPS': [
+    'CURL POLEA', 'CURL POLEA BAJA', 'CURL MANCUERNA', 'CURL MARTILLO', 'CURL SCOTT'
+  ],
+  'TRICEPS': [
+    'PARALELAS', 'TRICEP MANCUERNA', 'TRICEP CUERDA', 'TRICEP BANCO', 'TRICEP POLEA'
+  ],
+  'HOMBRO': [
+    'HOMBRO CABLE ALTO', 'HOMBRO CABLE BAJO', 'HOMBRO BANCO', 'HOMBRO MANCUERNA LATERAL', 'MANCUERNA FRONTAL'
+  ]
+};
+
 export default function App() {
   const { user, loading, isLoggingIn, login, logout } = useAuth();
   const [routines, setRoutines] = useState<Routine[]>([]);
@@ -85,6 +106,33 @@ export default function App() {
   const [showNewRoutineModal, setShowNewRoutineModal] = useState(false);
   const [newRoutineName, setNewRoutineName] = useState('');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [previewRoutine, setPreviewRoutine] = useState<Routine | null>(null);
+  const [isCloning, setIsCloning] = useState(false);
+
+  // Handle share links
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const shareId = params.get('share');
+    if (shareId) {
+      const fetchSharedRoutine = async () => {
+        try {
+          const docRef = doc(db, 'routines', shareId);
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            if (data.isPublic) {
+              setPreviewRoutine({ id: docSnap.id, ...data } as Routine);
+            } else {
+              alert('Esta rutina ya no es pública.');
+            }
+          }
+        } catch (error) {
+          console.error('Error fetching shared routine:', error);
+        }
+      };
+      fetchSharedRoutine();
+    }
+  }, []);
 
   // Fetch custom media
   useEffect(() => {
@@ -116,6 +164,62 @@ export default function App() {
       setRoutines(docs);
     });
   }, [user]);
+
+  const cloneRoutine = async (sourceRoutine: Routine) => {
+    if (!user) return;
+    setIsCloning(true);
+    try {
+      // 1. Create central routine doc
+      const routineRef = await addDoc(collection(db, 'routines'), {
+        userId: user.uid,
+        name: `${sourceRoutine.name} (COPIA)`,
+        weekStart: sourceRoutine.weekStart,
+        createdAt: serverTimestamp(),
+        isPublic: false
+      });
+
+      // 2. Fetch and clone days
+      const daysSnap = await getDocs(collection(db, 'routines', sourceRoutine.id, 'days'));
+      for (const dayDoc of daysSnap.docs) {
+        const dayData = dayDoc.data();
+        const newDayRef = await addDoc(collection(db, 'routines', routineRef.id, 'days'), {
+          routineId: routineRef.id,
+          userId: user.uid,
+          name: dayData.name,
+          order: dayData.order,
+          createdAt: serverTimestamp()
+        });
+
+        // 3. Fetch and clone exercises for this day
+        const exercisesSnap = await getDocs(collection(db, 'routines', sourceRoutine.id, 'days', dayDoc.id, 'exercises'));
+        for (const exDoc of exercisesSnap.docs) {
+          const exData = exDoc.data();
+          await addDoc(collection(db, 'routines', routineRef.id, 'days', newDayRef.id, 'exercises'), {
+            routineId: routineRef.id,
+            dayId: newDayRef.id,
+            userId: user.uid,
+            name: exData.name,
+            reps: exData.reps,
+            sets: exData.sets,
+            weight: exData.weight,
+            imageUrl: exData.imageUrl || '',
+            order: exData.order,
+            createdAt: serverTimestamp()
+          });
+        }
+      }
+
+      alert('¡Protocolo clonado con éxito!');
+      setPreviewRoutine(null);
+      // Clean URL
+      window.history.replaceState({}, '', window.location.pathname);
+    } catch (error) {
+      console.error('Error cloning routine:', error);
+      alert('Error al clonar la rutina.');
+    } finally {
+      setIsCloning(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -402,7 +506,22 @@ export default function App() {
       </AnimatePresence>
 
       <AnimatePresence mode="wait">
-        {showMediaLibrary ? (
+        {previewRoutine ? (
+          <RoutineView 
+            key={`preview-${previewRoutine.id}`} 
+            routine={previewRoutine} 
+            user={user} 
+            customMedia={customMedia}
+            onImageClick={(url) => setFullscreenImage(url)}
+            isSharedPreview={true}
+            onClone={() => cloneRoutine(previewRoutine)}
+            onCancel={() => {
+              setPreviewRoutine(null);
+              window.history.replaceState({}, '', window.location.pathname);
+            }}
+            isCloning={isCloning}
+          />
+        ) : showMediaLibrary ? (
           <MediaLibrary 
             key="media-library" 
             user={user} 
@@ -695,9 +814,46 @@ function MediaLibrary({ user, onImageClick }: { user: User, onImageClick: (url: 
   );
 }
 
-function RoutineView({ routine, user, customMedia, onImageClick }: { routine: Routine, user: User, customMedia: Record<string, string>, onImageClick: (url: string) => void }) {
+function RoutineView({ 
+  routine, 
+  user, 
+  customMedia, 
+  onImageClick,
+  isSharedPreview = false,
+  onClone,
+  onCancel,
+  isCloning = false
+}: { 
+  routine: Routine, 
+  user: User, 
+  customMedia: Record<string, string>, 
+  onImageClick: (url: string) => void,
+  isSharedPreview?: boolean,
+  onClone?: () => void,
+  onCancel?: () => void,
+  isCloning?: boolean
+}) {
   const [days, setDays] = useState<Day[]>([]);
   const [selectedDayId, setSelectedDayId] = useState<string | null>(null);
+  const [isCopying, setIsCopying] = useState(false);
+
+  const togglePublic = async () => {
+    try {
+      await updateDoc(doc(db, 'routines', routine.id), {
+        isPublic: !routine.isPublic,
+        updatedAt: serverTimestamp()
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `routines/${routine.id}`);
+    }
+  };
+
+  const copyShareLink = () => {
+    const url = `${window.location.origin}${window.location.pathname}?share=${routine.id}`;
+    navigator.clipboard.writeText(url);
+    setIsCopying(true);
+    setTimeout(() => setIsCopying(false), 2000);
+  };
 
   const translateDay = (name: string) => {
     const map: Record<string, string> = {
@@ -732,15 +888,64 @@ function RoutineView({ routine, user, customMedia, onImageClick }: { routine: Ro
       <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 md:gap-8 py-4">
         <div className="space-y-2">
           <div className="flex items-center gap-3 mb-2">
-            <span className="px-3 py-1 rounded-lg bg-green-100 text-green-600 text-[10px] font-black uppercase tracking-widest">Estado Activo</span>
+            <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${isSharedPreview ? 'bg-indigo-100 text-indigo-600' : 'bg-green-100 text-green-600'}`}>
+              {isSharedPreview ? 'Previsualización de Enlace' : 'Estado Activo'}
+            </span>
             <span className="text-[10px] font-bold text-slate-300 uppercase tracking-[0.2em]">Ref: {routine.id.slice(0, 8)}</span>
           </div>
           <h2 className="text-3xl md:text-6xl font-black text-slate-900 tracking-tighter uppercase leading-none">{routine.name}</h2>
-          <div className="flex items-center gap-8 pt-2 md:pt-4">
+          <div className="flex flex-wrap items-center gap-4 md:gap-8 pt-2 md:pt-4">
             <div className="flex items-center gap-3 text-slate-400">
               <Calendar className="w-4 h-4 md:w-5 md:h-5" />
               <span className="text-[10px] md:text-xs font-bold uppercase tracking-widest">Sem {routine.weekStart}</span>
             </div>
+            
+            {!isSharedPreview ? (
+              <div className="flex items-center gap-2">
+                 <button 
+                  onClick={togglePublic}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                    routine.isPublic 
+                      ? 'bg-green-500 text-white shadow-lg shadow-green-100' 
+                      : 'bg-slate-100 text-slate-400 hover:bg-slate-200'
+                  }`}
+                 >
+                   <Share2 className="w-4 h-4" />
+                   {routine.isPublic ? 'Público' : 'Privado'}
+                 </button>
+  
+                 {routine.isPublic && (
+                   <button 
+                    onClick={copyShareLink}
+                    className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all active:scale-95"
+                   >
+                     {isCopying ? <CheckCircle2 className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                     {isCopying ? 'Copiado' : 'Compartir'}
+                   </button>
+                 )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={onClone}
+                  disabled={isCloning}
+                  className="flex items-center gap-2 px-6 py-2 bg-yellow-400 text-indigo-900 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-yellow-500 shadow-lg shadow-yellow-100 transition-all active:scale-95 disabled:opacity-50"
+                >
+                  {isCloning ? (
+                    <div className="w-4 h-4 border-2 border-indigo-900/20 border-t-indigo-900 rounded-full animate-spin"></div>
+                  ) : (
+                    <PlusCircle className="w-4 h-4" />
+                  )}
+                  Clonar Protocolo
+                </button>
+                <button 
+                  onClick={onCancel}
+                  className="px-4 py-2 bg-slate-100 text-slate-400 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200"
+                >
+                  Salir
+                </button>
+              </div>
+            )}
           </div>
         </div>
         <div className="flex flex-col items-start lg:items-end gap-2">
@@ -785,9 +990,10 @@ function RoutineView({ routine, user, customMedia, onImageClick }: { routine: Ro
             <ExerciseManager 
               routineId={routine.id} 
               dayId={activeDay.id} 
-              userId={user.uid} 
+              userId={routine.userId} 
               customMedia={customMedia}
               onImageClick={onImageClick}
+              readOnly={isSharedPreview}
             />
           ) : (
             <div className="p-12 md:p-24 text-center text-slate-200 font-black text-2xl md:text-4xl uppercase tracking-tighter">Datos Fuera de Línea</div>
@@ -798,7 +1004,7 @@ function RoutineView({ routine, user, customMedia, onImageClick }: { routine: Ro
   );
 }
 
-function ExerciseManager({ routineId, dayId, userId, customMedia, onImageClick }: { routineId: string, dayId: string, userId: string, customMedia: Record<string, string>, onImageClick: (url: string) => void }) {
+function ExerciseManager({ routineId, dayId, userId, customMedia, onImageClick, readOnly = false }: { routineId: string, dayId: string, userId: string, customMedia: Record<string, string>, onImageClick: (url: string) => void, readOnly?: boolean }) {
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [newExercise, setNewExercise] = useState({ name: '', reps: 10, sets: 3, weight: 20 });
   const [showAddForm, setShowAddForm] = useState(false);
@@ -871,13 +1077,15 @@ function ExerciseManager({ routineId, dayId, userId, customMedia, onImageClick }
             <p className="text-[9px] md:text-[10px] font-bold text-indigo-400 uppercase tracking-widest">{exercises.length} Unidades Activas</p>
           </div>
         </div>
-        <button 
-          onClick={() => setShowAddForm(true)}
-          className="flex items-center gap-2 md:gap-3 px-6 md:px-8 py-3 md:py-4 bg-indigo-600 text-white rounded-xl md:rounded-2xl text-[10px] md:text-xs font-black uppercase tracking-widest hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all active:scale-95 w-full sm:w-auto justify-center"
-        >
-          <Plus className="w-4 h-4 md:w-5 md:h-5 text-yellow-400" />
-          Registrar Unidad
-        </button>
+        {!readOnly && (
+          <button 
+            onClick={() => setShowAddForm(true)}
+            className="flex items-center gap-2 md:gap-3 px-6 md:px-8 py-3 md:py-4 bg-indigo-600 text-white rounded-xl md:rounded-2xl text-[10px] md:text-xs font-black uppercase tracking-widest hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all active:scale-95 w-full sm:w-auto justify-center"
+          >
+            <Plus className="w-4 h-4 md:w-5 md:h-5 text-yellow-400" />
+            Registrar Unidad
+          </button>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 md:p-10 space-y-4 no-scrollbar">
@@ -900,21 +1108,23 @@ function ExerciseManager({ routineId, dayId, userId, customMedia, onImageClick }
             >
               <div className="flex items-center justify-between md:block">
                 <span className="text-xs md:text-sm font-black text-slate-300 md:text-slate-200">{String(idx + 1).padStart(2, '0')}</span>
-                <div className="md:hidden flex gap-2">
-                   <button 
-                    onClick={() => {
-                        if (confirmDeleteId === ex.id) {
-                          deleteExercise(ex.id);
-                        } else {
-                          setConfirmDeleteId(ex.id);
-                          setTimeout(() => setConfirmDeleteId(null), 3000);
-                        }
-                    }}
-                    className={`p-2 rounded-lg ${confirmDeleteId === ex.id ? 'bg-red-600 text-white' : 'bg-red-50 text-red-500'}`}
-                   >
-                     <Trash2 className="w-4 h-4" />
-                   </button>
-                </div>
+                {!readOnly && (
+                  <div className="md:hidden flex gap-2">
+                     <button 
+                      onClick={() => {
+                          if (confirmDeleteId === ex.id) {
+                            deleteExercise(ex.id);
+                          } else {
+                            setConfirmDeleteId(ex.id);
+                            setTimeout(() => setConfirmDeleteId(null), 3000);
+                          }
+                      }}
+                      className={`p-2 rounded-lg ${confirmDeleteId === ex.id ? 'bg-red-600 text-white' : 'bg-red-50 text-red-500'}`}
+                     >
+                       <Trash2 className="w-4 h-4" />
+                     </button>
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center gap-4 md:contents">
@@ -946,35 +1156,37 @@ function ExerciseManager({ routineId, dayId, userId, customMedia, onImageClick }
               </div>
 
               <div className="hidden md:flex justify-end relative z-[10] pointer-events-auto">
-                <button 
-                  type="button"
-                  disabled={deletingId === ex.id}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    if (confirmDeleteId === ex.id) {
-                      deleteExercise(ex.id);
-                    } else {
-                      setConfirmDeleteId(ex.id);
-                      setTimeout(() => setConfirmDeleteId(null), 3000);
-                    }
-                  }}
-                  className={`min-w-[4rem] h-16 px-4 rounded-[24px] shadow-lg transition-all active:scale-75 flex items-center justify-center cursor-pointer border-2 shadow-red-100/50 group/del ${
-                    deletingId === ex.id 
-                      ? 'bg-slate-100 border-slate-200 cursor-not-allowed opacity-50' 
-                      : confirmDeleteId === ex.id
-                        ? 'bg-red-600 border-red-700 text-white w-32'
-                        : 'bg-white border-red-50 text-red-500 hover:bg-red-500 hover:text-white hover:border-red-600 w-16'
-                  }`}
-                >
-                  {deletingId === ex.id ? (
-                    <div className="w-6 h-6 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin"></div>
-                  ) : confirmDeleteId === ex.id ? (
-                    <span className="text-[10px] font-black uppercase tracking-widest whitespace-nowrap">¿SI?</span>
-                  ) : (
-                    <Trash2 className="w-8 h-8" />
-                  )}
-                </button>
+                {!readOnly && (
+                  <button 
+                    type="button"
+                    disabled={deletingId === ex.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      if (confirmDeleteId === ex.id) {
+                        deleteExercise(ex.id);
+                      } else {
+                        setConfirmDeleteId(ex.id);
+                        setTimeout(() => setConfirmDeleteId(null), 3000);
+                      }
+                    }}
+                    className={`min-w-[4rem] h-16 px-4 rounded-[24px] shadow-lg transition-all active:scale-75 flex items-center justify-center cursor-pointer border-2 shadow-red-100/50 group/del ${
+                      deletingId === ex.id 
+                        ? 'bg-slate-100 border-slate-200 cursor-not-allowed opacity-50' 
+                        : confirmDeleteId === ex.id
+                          ? 'bg-red-600 border-red-700 text-white w-32'
+                          : 'bg-white border-red-50 text-red-500 hover:bg-red-500 hover:text-white hover:border-red-600 w-16'
+                    }`}
+                  >
+                    {deletingId === ex.id ? (
+                      <div className="w-6 h-6 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin"></div>
+                    ) : confirmDeleteId === ex.id ? (
+                      <span className="text-[10px] font-black uppercase tracking-widest whitespace-nowrap">¿SI?</span>
+                    ) : (
+                      <Trash2 className="w-8 h-8" />
+                    )}
+                  </button>
+                )}
               </div>
             </motion.div>
           ))}
@@ -999,16 +1211,37 @@ function ExerciseManager({ routineId, dayId, userId, customMedia, onImageClick }
             >
               <div className="relative z-10 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-[1.5fr_1fr_1fr_1fr] gap-4 md:gap-6">
                 <div className="space-y-2 md:space-y-3 sm:col-span-2 md:col-span-1">
-                  <label className="text-[9px] md:text-[10px] font-black text-indigo-300 uppercase tracking-[0.2em]">Designación</label>
-                  <input 
+                  <label className="text-[9px] md:text-[10px] font-black text-indigo-300 uppercase tracking-[0.2em]">Protocolo de Selección</label>
+                  <select 
                     autoFocus
-                    type="text" 
-                    placeholder="EJ. PRESS BANCA"
                     value={newExercise.name}
-                    onChange={(e) => setNewExercise({...newExercise, name: e.target.value.toUpperCase()})}
-                    className="w-full bg-indigo-800 border-2 border-indigo-700 p-4 md:p-5 rounded-xl md:rounded-2xl text-white font-black uppercase tracking-widest focus:border-yellow-400 outline-none placeholder:text-indigo-400/50 text-sm md:text-base"
-                  />
+                    onChange={(e) => setNewExercise({...newExercise, name: e.target.value})}
+                    className="w-full bg-indigo-800 border-2 border-indigo-700 p-4 md:p-5 rounded-xl md:rounded-2xl text-white font-black uppercase tracking-widest focus:border-yellow-400 outline-none appearance-none cursor-pointer text-sm md:text-base"
+                  >
+                    <option value="" disabled className="bg-indigo-900">SELECCIONAR EJERCICIO</option>
+                    {Object.entries(EXERCISE_GROUPS).map(([category, exercises]) => (
+                      <optgroup key={category} label={category} className="bg-indigo-900 text-yellow-400 font-black">
+                        {exercises.map(ex => (
+                          <option key={ex} value={ex} className="bg-indigo-900 text-white font-bold">{ex}</option>
+                        ))}
+                      </optgroup>
+                    ))}
+                    <optgroup label="OTROS" className="bg-indigo-900 text-indigo-300 font-black">
+                      <option value="OTRO" className="bg-indigo-900 text-white font-bold">INTRODUCIR PERSONALIZADO...</option>
+                    </optgroup>
+                  </select>
                 </div>
+                {newExercise.name === 'OTRO' && (
+                  <div className="space-y-2 md:space-y-3 sm:col-span-2">
+                    <label className="text-[9px] md:text-[10px] font-black text-indigo-300 uppercase tracking-[0.2em]">Nombre Personalizado</label>
+                    <input 
+                      type="text" 
+                      placeholder="ESCRIBE EL NOMBRE DEL EJERCICIO..."
+                      className="w-full bg-indigo-800 border-2 border-indigo-700 p-4 md:p-5 rounded-xl md:rounded-2xl text-white font-black uppercase tracking-widest focus:border-yellow-400 outline-none"
+                      onBlur={(e) => setNewExercise({...newExercise, name: e.target.value.toUpperCase()})}
+                    />
+                  </div>
+                )}
                 <div className="space-y-2 md:space-y-3">
                   <label className="text-[9px] md:text-[10px] font-black text-indigo-300 uppercase tracking-[0.2em]">Series</label>
                   <input 
