@@ -17,7 +17,9 @@ import {
   Image as ImageIcon,
   Upload,
   Search,
-  CheckCircle2
+  CheckCircle2,
+  Menu,
+  LayoutDashboard
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User } from 'firebase/auth';
@@ -223,9 +225,9 @@ export default function App() {
         </div>
         <button 
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          className="p-2 bg-indigo-500 rounded-xl"
+          className="p-2 bg-indigo-500 rounded-xl hover:bg-indigo-400 transition-colors shadow-inner"
         >
-          {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Plus className="w-6 h-6 rotate-45" />}
+          {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
         </button>
       </div>
 
@@ -248,68 +250,93 @@ export default function App() {
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-2">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-[10px] font-bold tracking-[0.2em] uppercase text-indigo-300">Mis Rutinas</span>
-                <span className="text-[10px] font-bold bg-indigo-500 px-2 py-0.5 rounded-full">{routines.length}/2</span>
-              </div>
-
-              <button 
-                onClick={() => {
-                  setSelectedRoutine(null);
-                  setShowMediaLibrary(true);
-                  setIsMobileMenuOpen(false);
-                }}
-                className={`w-full mb-2 p-4 rounded-2xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${
-                  showMediaLibrary 
-                    ? 'bg-indigo-500 text-white shadow-lg' 
-                    : 'bg-indigo-700/30 text-indigo-200 hover:bg-indigo-700/50'
-                }`}
-              >
-                <ImageIcon className="w-4 h-4" />
-                Librería Visual
-              </button>
-
-              <button 
-                onClick={() => {
-                  setShowMediaLibrary(false);
-                  setShowNewRoutineModal(true);
-                  setIsMobileMenuOpen(false);
-                }}
-                className="w-full mb-6 p-4 border-2 border-dashed border-indigo-400/50 rounded-2xl text-indigo-100 text-sm font-bold hover:border-white hover:text-white transition-all flex items-center justify-center gap-2"
-              >
-                <Plus className="w-4 h-4" />
-                Nuevo Protocolo
-              </button>
-
-              {routines.map((routine) => (
-                <div 
-                  key={routine.id}
-                  onClick={() => {
-                    setSelectedRoutine(routine);
-                    setShowMediaLibrary(false);
-                    setIsMobileMenuOpen(false);
-                  }}
-                  className={`group flex items-center justify-between p-4 rounded-2xl cursor-pointer transition-all border-l-4 ${
-                    selectedRoutine?.id === routine.id 
-                      ? 'bg-indigo-500 border-yellow-400 text-white shadow-lg' 
-                      : 'bg-indigo-700/30 border-transparent text-indigo-200 hover:bg-indigo-700/50'
-                  }`}
-                >
-                  <div className="flex flex-col gap-0.5 min-w-0">
-                    <span className="font-bold tracking-tight text-sm truncate uppercase">{routine.name}</span>
-                    <span className={`text-[10px] font-medium opacity-60 uppercase`}>
-                       Sem {routine.weekStart.split('-')[1]} • {routine.weekStart.split('-')[0]}
-                    </span>
-                  </div>
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              <div>
+                <span className="text-[10px] font-bold tracking-[0.2em] uppercase text-indigo-300 block mb-4">Navegación</span>
+                <div className="space-y-2">
                   <button 
-                    onClick={(e) => { e.stopPropagation(); deleteRoutine(routine.id); }}
-                    className={`p-2 rounded-lg transition-all md:opacity-0 group-hover:opacity-100 hover:bg-white/10 hover:text-red-400`}
+                    onClick={() => {
+                      setSelectedRoutine(null);
+                      setShowMediaLibrary(false);
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className={`w-full p-4 rounded-2xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-3 ${
+                      !showMediaLibrary && !selectedRoutine
+                        ? 'bg-indigo-500 text-white shadow-lg' 
+                        : 'bg-indigo-700/30 text-indigo-200 hover:bg-indigo-700/50'
+                    }`}
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <LayoutDashboard className="w-4 h-4" />
+                    Panel Principal
+                  </button>
+
+                  <button 
+                    onClick={() => {
+                      setSelectedRoutine(null);
+                      setShowMediaLibrary(true);
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className={`w-full p-4 rounded-2xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-3 ${
+                      showMediaLibrary 
+                        ? 'bg-indigo-500 text-white shadow-lg' 
+                        : 'bg-indigo-700/30 text-indigo-200 hover:bg-indigo-700/50'
+                    }`}
+                  >
+                    <ImageIcon className="w-4 h-4" />
+                    Librería Visual
                   </button>
                 </div>
-              ))}
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-[10px] font-bold tracking-[0.2em] uppercase text-indigo-300">Mis Protocolos</span>
+                  <span className="text-[10px] font-bold bg-indigo-500 px-2 py-0.5 rounded-full">{routines.length}/2</span>
+                </div>
+
+                <button 
+                  onClick={() => {
+                    setShowMediaLibrary(false);
+                    setShowNewRoutineModal(true);
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="w-full mb-4 p-4 border-2 border-dashed border-indigo-400/50 rounded-2xl text-indigo-100 text-sm font-bold hover:border-white hover:text-white transition-all flex items-center justify-center gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  Nueva Rutina
+                </button>
+
+                <div className="space-y-2">
+                  {routines.map((routine) => (
+                    <div 
+                      key={routine.id}
+                      onClick={() => {
+                        setSelectedRoutine(routine);
+                        setShowMediaLibrary(false);
+                        setIsMobileMenuOpen(false);
+                      }}
+                      className={`group flex items-center justify-between p-4 rounded-2xl cursor-pointer transition-all border-l-4 ${
+                        selectedRoutine?.id === routine.id 
+                          ? 'bg-indigo-500 border-yellow-400 text-white shadow-lg' 
+                          : 'bg-indigo-700/30 border-transparent text-indigo-200 hover:bg-indigo-700/50'
+                      }`}
+                    >
+                      <div className="flex flex-col gap-0.5 min-w-0">
+                        <span className="font-bold tracking-tight text-sm truncate uppercase">{routine.name}</span>
+                        <span className={`text-[10px] font-medium opacity-60 uppercase`}>
+                          Sem {routine.weekStart.split('-')[1]} • {routine.weekStart.split('-')[0]}
+                        </span>
+                      </div>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); deleteRoutine(routine.id); }}
+                        className={`p-2 rounded-lg transition-all md:opacity-0 group-hover:opacity-100 hover:bg-white/10 hover:text-red-400`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
 
             <div className="p-6 bg-indigo-700/50 m-4 rounded-[32px] border border-indigo-400/20">
