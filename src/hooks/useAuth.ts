@@ -6,6 +6,7 @@ import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   useEffect(() => {
     return onAuthStateChanged(auth, async (user) => {
@@ -31,11 +32,23 @@ export function useAuth() {
   }, []);
 
   const login = async () => {
+    setIsLoggingIn(true);
     const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth, provider);
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (error) {
+      console.error('Login error:', error);
+      if (error instanceof Error && error.message.includes('auth/unauthorized-domain')) {
+        alert('Este dominio no está autorizado en Firebase. Por favor, añade tu dominio de Vercel en la consola de Firebase -> Authentication -> Settings -> Authorized Domains.');
+      } else {
+        alert('Error al iniciar sesión: ' + (error instanceof Error ? error.message : 'Error desconocido'));
+      }
+    } finally {
+      setIsLoggingIn(false);
+    }
   };
 
   const logout = () => signOut(auth);
 
-  return { user, loading, login, logout };
+  return { user, loading, isLoggingIn, login, logout };
 }

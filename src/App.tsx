@@ -74,7 +74,7 @@ function getExerciseImage(name: string, customMedia: Record<string, string> = {}
 }
 
 export default function App() {
-  const { user, loading, login, logout } = useAuth();
+  const { user, loading, isLoggingIn, login, logout } = useAuth();
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [selectedRoutine, setSelectedRoutine] = useState<Routine | null>(null);
   const [showMediaLibrary, setShowMediaLibrary] = useState(false);
@@ -147,10 +147,11 @@ export default function App() {
           </div>
           <button 
             onClick={login}
-            className="w-full py-5 bg-indigo-600 text-white font-black uppercase tracking-widest rounded-2xl hover:bg-indigo-700 hover:shadow-xl hover:shadow-indigo-200 transition-all duration-300 flex items-center justify-center gap-3 active:scale-95 shadow-lg shadow-indigo-100"
+            disabled={isLoggingIn}
+            className={`w-full py-5 bg-indigo-600 text-white font-black uppercase tracking-widest rounded-2xl hover:bg-indigo-700 hover:shadow-xl hover:shadow-indigo-200 transition-all duration-300 flex items-center justify-center gap-3 active:scale-95 shadow-lg shadow-indigo-100 ${isLoggingIn ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
-            Acceder al Panel
-            <ChevronRight className="w-6 h-6" />
+            {isLoggingIn ? 'Iniciando sesión...' : 'Acceder al Panel'}
+            {!isLoggingIn && <ChevronRight className="w-6 h-6" />}
           </button>
         </motion.div>
       </div>
