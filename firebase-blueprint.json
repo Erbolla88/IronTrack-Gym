@@ -1,0 +1,96 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "photoURL": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "displayName", "email", "createdAt"]
+    },
+    "Routine": {
+      "title": "Routine",
+      "description": "A workout routine consisting of multiple days",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "weekStart": { "type": "string", "description": "ISO date of the Monday of the week" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "name", "weekStart", "createdAt"]
+    },
+    "Day": {
+      "title": "Day",
+      "description": "A specific day within a routine",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "routineId": { "type": "string" },
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "order": { "type": "integer" }
+      },
+      "required": ["id", "routineId", "userId", "name", "order"]
+    },
+    "Exercise": {
+      "title": "Exercise",
+      "description": "An exercise within a day",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "dayId": { "type": "string" },
+        "routineId": { "type": "string" },
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "reps": { "type": "integer" },
+        "sets": { "type": "integer" },
+        "weight": { "type": "number" },
+        "imageUrl": { "type": "string" },
+        "order": { "type": "integer" }
+      },
+      "required": ["id", "dayId", "routineId", "userId", "name", "reps", "sets", "weight", "order"]
+    },
+    "ExerciseMedia": {
+      "title": "ExerciseMedia",
+      "description": "Custom media mapping for exercises",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "exerciseName": { "type": "string" },
+        "imageUrl": { "type": "string", "description": "Base64 encoded image data (compressed)" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "exerciseName", "imageUrl", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/routines/{routineId}": {
+      "schema": "Routine",
+      "description": "Routines created by users"
+    },
+    "/routines/{routineId}/days/{dayId}": {
+      "schema": "Day",
+      "description": "Days within a routine"
+    },
+    "/routines/{routineId}/days/{dayId}/exercises/{exerciseId}": {
+      "schema": "Exercise",
+      "description": "Exercises within a day"
+    },
+    "/exerciseMedia/{mediaId}": {
+      "schema": "ExerciseMedia",
+      "description": "Global custom media for exercises per user"
+    }
+  }
+}

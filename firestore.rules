@@ -1,0 +1,98 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Phase 3: Primitives
+    function isSignedIn() { return request.auth != null; }
+    function isVerified() { return isSignedIn() && request.auth.token.email_verified == true; }
+    function isValidId(id) { return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+
+    // User Profiles
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUser(incoming());
+      allow update: if isOwner(userId) && isValidUser(incoming()) && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'updatedAt']);
+    }
+
+    function isValidUser(data) {
+      return data.userId == request.auth.uid
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100
+        && data.email is string && data.email.size() <= 100
+        && data.createdAt == (resource == null ? request.time : existing().createdAt);
+    }
+
+    // Routines
+    match /routines/{routineId} {
+      allow list: if isVerified() && resource.data.userId == request.auth.uid;
+      allow get: if isVerified() && resource.data.userId == request.auth.uid;
+      allow create: if isVerified() && isValidRoutine(incoming()) && isValidId(routineId);
+      allow update: if isVerified() && isOwner(existing().userId) && isValidRoutine(incoming()) && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'weekStart', 'updatedAt']);
+      allow delete: if isVerified() && isOwner(existing().userId);
+    }
+
+    function isValidRoutine(data) {
+      return data.userId == request.auth.uid
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 100
+        && data.weekStart is string && data.weekStart.size() == 10 // YYYY-MM-DD
+        && data.createdAt == (resource == null ? request.time : existing().createdAt);
+    }
+
+    // Days (Subcollection)
+    match /routines/{routineId}/days/{dayId} {
+      allow list, get: if isVerified() && isOwner(get(/databases/$(database)/documents/routines/$(routineId)).data.userId);
+      allow create: if isVerified() && isOwner(get(/databases/$(database)/documents/routines/$(routineId)).data.userId) && isValidDay(incoming(), routineId) && isValidId(dayId);
+      allow update: if isVerified() && isOwner(get(/databases/$(database)/documents/routines/$(routineId)).data.userId) && isValidDay(incoming(), routineId) && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'order', 'updatedAt']);
+      allow delete: if isVerified() && isOwner(get(/databases/$(database)/documents/routines/$(routineId)).data.userId);
+    }
+
+    function isValidDay(data, routineId) {
+      return data.routineId == routineId
+        && data.userId == request.auth.uid
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 50
+        && data.order is int
+        && data.createdAt == (resource == null ? request.time : existing().createdAt);
+    }
+
+    // Exercises (Nested Subcollection)
+    match /routines/{routineId}/days/{dayId}/exercises/{exerciseId} {
+      allow list, get: if isVerified() && isOwner(get(/databases/$(database)/documents/routines/$(routineId)).data.userId);
+      allow create: if isVerified() && isOwner(get(/databases/$(database)/documents/routines/$(routineId)).data.userId) && isValidExercise(incoming(), dayId, routineId) && isValidId(exerciseId);
+      allow update: if isVerified() && isOwner(get(/databases/$(database)/documents/routines/$(routineId)).data.userId) && isValidExercise(incoming(), dayId, routineId) && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'reps', 'sets', 'weight', 'order', 'imageUrl', 'updatedAt']);
+      allow delete: if isVerified() && isOwner(get(/databases/$(database)/documents/routines/$(routineId)).data.userId);
+    }
+
+    function isValidExercise(data, dayId, routineId) {
+      return data.dayId == dayId
+        && data.routineId == routineId
+        && data.userId == request.auth.uid
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 100
+        && data.reps is int && data.reps >= 0 && data.reps <= 1000
+        && data.sets is int && data.sets >= 0 && data.sets <= 1000
+        && data.weight is number && data.weight >= 0 && data.weight <= 1000
+        && (data.get('imageUrl', null) == null || (data.imageUrl is string && data.imageUrl.size() <= 1000000))
+        && data.order is int
+        && data.createdAt == (resource == null ? request.time : existing().createdAt);
+    }
+
+    // Exercise Media (Global per user library)
+    match /exerciseMedia/{mediaId} {
+      allow list, get: if isVerified() && resource.data.userId == request.auth.uid;
+      allow create: if isVerified() && isValidMedia(incoming()) && isValidId(mediaId);
+      allow delete: if isVerified() && isOwner(existing().userId);
+    }
+
+    function isValidMedia(data) {
+      return data.userId == request.auth.uid
+        && data.exerciseName is string && data.exerciseName.size() >= 1 && data.exerciseName.size() <= 100
+        && data.imageUrl is string && data.imageUrl.size() <= 1000000
+        && data.createdAt == (resource == null ? request.time : existing().createdAt);
+    }
+  }
+}
